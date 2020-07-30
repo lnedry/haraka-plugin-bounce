@@ -1,34 +1,46 @@
 {
-  "name": "haraka-plugin-template",
-  "version": "1.0.0",
-  "description": "Haraka plugin that frobnicates email connections",
+  "name": "haraka-plugin-bounce",
+  "version": "1.0.2",
+  "description": "Provide options for Haraka bounce processing",
   "main": "index.js",
+  "files": [
+    "CHANGELOG.md",
+    "config"
+  ],
   "scripts": {
-    "lint": "npx eslint *.js test/*.js",
-    "lintfix": "npx eslint --fix *.js test/*.js",
-    "cover": "NODE_ENV=cov npx nyc --reporter=lcovonly npm run test",
+    "format": "npm run prettier:fix && npm run lint:fix",
+    "lint": "npx eslint@^8 *.js test",
+    "lint:fix": "npx eslint@^8 *.js test --fix",
+    "prettier": "npx prettier . --check",
+    "prettier:fix": "npx prettier . --write --log-level=warn",
+    "test": "npx mocha",
     "versions": "npx dependency-version-checker check",
-    "test": "npx mocha"
+    "versions:fix": "npx dependency-version-checker update"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/haraka/haraka-plugin-template.git"
+    "url": "git+https://github.com/haraka/haraka-plugin-bounce.git"
   },
   "keywords": [
     "haraka",
     "plugin",
-    "template"
+    "bounce"
   ],
-  "author": "Welcome Member <happy-haraka-hacker@example.com>",
+  "author": "Haraka Team <haraka.team@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/haraka/haraka-plugin-template/issues"
+    "url": "https://github.com/haraka/haraka-plugin-bounce/issues"
   },
-  "homepage": "https://github.com/haraka/haraka-plugin-template#readme",
+  "homepage": "https://github.com/haraka/haraka-plugin-bounce#readme",
+  "dependencies": {
+    "address-rfc2821": "^2.1.2",
+    "haraka-net-utils": "^1.6.0",
+    "haraka-plugin-spf": "^1.2.5",
+    "haraka-tld": "^1.2.1"
+  },
   "devDependencies": {
-    "eslint": "*",
-    "eslint-plugin-haraka": "*",
-    "haraka-test-fixtures": "*",
-    "mocha": "*"
+    "@haraka/eslint-config": "1.1.3",
+    "haraka-email-message": "^1.2.3",
+    "haraka-test-fixtures": "1.3.5"
   }
 }

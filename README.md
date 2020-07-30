@@ -1,79 +1,81 @@
-[![Unix Build Status][ci-img]][ci-url]
-[![Windows Build Status][ci-win-img]][ci-win-url]
+[![CI Test Status][ci-img]][ci-url]
 [![Code Climate][clim-img]][clim-url]
+
 [![NPM][npm-img]][npm-url]
 
-# haraka-plugin-template
+# haraka-plugin-bounce
 
-Clone me, to create a new plugin!
+# bounce
 
-# Template Instructions
+Provide options for bounce processing.
 
-These instructions will not self-destruct after use. Use and destroy.
+## Configuration
 
-See also, [How to Write a Plugin](https://github.com/haraka/Haraka/wiki/Write-a-Plugin) and [Plugins.md](https://github.com/haraka/Haraka/blob/master/docs/Plugins.md) for additional plugin writing information.
+Each feature can be enabled/disabled with a true/false toggle in the `[check]`
+section of `config/bounce.ini`:
 
-## Create a new repo for your plugin
+Some features can have rejections disabled in the [reject] section.
 
-Haraka plugins are named like `haraka-plugin-something`. All the namespace after `haraka-plugin-` is yours for the taking. Please check the [Plugins](https://github.com/haraka/Haraka/blob/master/Plugins.md) page and a Google search to see what plugins already exist.
+```ini
+[check]
+reject_all=false
+single_recipient=true
+empty_return_path=true
+bad_rcpt=true
+bounce_spf=true
+non_local_msgid=true
 
-Once you've settled on a name, create the GitHub repo. On the repo's main page, click the _Clone or download_ button and copy the URL. Then paste that URL into a local ENV variable with a command like this:
-
-```sh
-export MY_GITHUB_ORG=haraka
-export MY_PLUGIN_NAME=haraka-plugin-SOMETHING
+[reject]
+single_recipient=true
+empty_return_path=true
+bounce_spf=false
+non_local_msgid=false
 ```
 
-Clone and rename the template repo:
+## Features
 
-```sh
-git clone git@github.com:haraka/haraka-plugin-template.git
-mv haraka-plugin-template $MY_PLUGIN_NAME
-cd $MY_PLUGIN_NAME
-git remote rm origin
-git remote add origin "git@github.com:$MY_GITHUB_ORG/$MY_PLUGIN_NAME.git"
-```
+### reject_all
 
-Now you'll have a local git repo to begin authoring your plugin
+When enabled, blocks all bounce messages using the simple rule of checking for `MAIL FROM:<>`.
 
-## rename boilerplate
+It is generally a bad idea to block all bounces. This option can be useful for mail servers at domains with frequent spoofing and few or no human users.
 
-Replaces all uses of the word `template` with your plugin's name.
+### single_recipient
 
-./redress.sh [something]
+Valid bounces have a single recipient. Assure that the message really is a bounce by enforcing bounces to be addressed to a single recipient.
 
-You'll then be prompted to update package.json and then force push this repo onto the GitHub repo you've created earlier.
+This check is skipped for relays or hosts with a private IP, this is because Microsoft Exchange distribution lists will send messages to list members with a null return-path when the 'Do not send delivery reports' option is enabled (yes, really...).
 
+### empty_return_path
 
-# Add your content here
+Valid bounces should have an empty return path. Test for the presence of the Return-Path header in bounces and disallow.
 
-## INSTALL
+### bad_rcpt
 
-```sh
-cd /path/to/local/haraka
-npm install haraka-plugin-template
-echo "template" >> config/plugins
-service haraka restart
-```
+Disallow bounces to email addresses listed in `config/bounce_bad_rcpt`.
 
-### Configuration
+Include email addresses in that file that should _never_ receive bounce messages. Examples of email addresses that should be listed are: autoresponders, do-not-reply@example.com, dmarc-feedback@example.com, and any other email addresses used solely for machine generated messages.
 
-If the default configuration is not sufficient, copy the config file from the distribution into your haraka config dir and then modify it:
+### bounce_spf
 
-```sh
-cp node_modules/haraka-plugin-template/config/template.ini config/template.ini
-$EDITOR config/template.ini
-```
+Parses the message body and any MIME parts for Received: headers and strips out the IP addresses of each Received hop and then checks what the SPF result would have been if bounced message had been sent by that hop.
+
+If no 'Pass' result is found, then this test will fail. If SPF returns 'None', 'TempError' or 'PermError' then the test will be skipped.
 
 ## USAGE
 
+Add `bounce` to Haraka's config/plugins file. If desired, install and customize a local bounce.ini.
+
+```sh
+cp node_modules/haraka-plugin-bounce/config/bounce.ini config/bounce.ini
+$EDITOR config/bounce.ini
+```
 
 <!-- leave these buried at the bottom of the document -->
-[ci-img]: https://github.com/haraka/haraka-plugin-template/workflows/Plugin%20Tests/badge.svg
-[ci-url]: https://github.com/haraka/haraka-plugin-template/actions?query=workflow%3A%22Plugin+Tests%22
-[ci-win-img]: https://github.com/haraka/haraka-plugin-template/workflows/Plugin%20Tests%20-%20Windows/badge.svg
-[ci-win-url]: https://github.com/haraka/haraka-plugin-template/actions?query=workflow%3A%22Plugin+Tests+-+Windows%22
-[clim-img]: https://codeclimate.com/github/haraka/haraka-plugin-template/badges/gpa.svg
-[clim-url]: https://codeclimate.com/github/haraka/haraka-plugin-template
-[npm-img]: https://nodei.co/npm/haraka-plugin-template.png
-[npm-url]: https://www.npmjs.com/package/haraka-plugin-template
+
+[ci-img]: https://github.com/haraka/haraka-plugin-bounce/actions/workflows/ci.yml/badge.svg
+[ci-url]: https://github.com/haraka/haraka-plugin-bounce/actions/workflows/ci.yml
+[clim-img]: https://codeclimate.com/github/haraka/haraka-plugin-bounce/badges/gpa.svg
+[clim-url]: https://codeclimate.com/github/haraka/haraka-plugin-bounce
+[npm-img]: https://nodei.co/npm/haraka-plugin-bounce.png
+[npm-url]: https://www.npmjs.com/package/haraka-plugin-bounce
