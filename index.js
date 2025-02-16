@@ -6,27 +6,40 @@ const net_utils = require('haraka-net-utils')
 exports.register = function () {
   this.load_bounce_ini()
   this.load_bounce_bad_rcpt()
+  this.load_host_list()
+  this.load_allowed_msgid_domains()
 
   this.register_hook('mail', 'reject_all')
+  this.register_hook('rcpt_ok', 'bad_rcpt')
   this.register_hook('data', 'single_recipient')
-  this.register_hook('data', 'bad_rcpt')
-  this.register_hook('data_post', 'empty_return_path')
   this.register_hook('data', 'bounce_spf_enable')
+  this.register_hook('data_post', 'empty_return_path')
   this.register_hook('data_post', 'bounce_spf')
   this.register_hook('data_post', 'non_local_msgid')
 }
 
 exports.load_bounce_bad_rcpt = function () {
-  const new_list = this.config.get('bounce_bad_rcpt', 'list', () => {
+  const raw_list = this.config.get('bounce_bad_rcpt', 'list', () => {
     this.load_bounce_bad_rcpt()
   })
 
-  const invalids = {}
-  for (const element of new_list) {
-    invalids[element] = true
-  }
+  this.cfg.invalid_addrs = raw_list.map((n) => n.toLowerCase())
+}
 
-  this.cfg.invalid_addrs = invalids
+exports.load_host_list = function () {
+  const raw_list = this.config.get('host_list', 'list', () => {
+    this.load_host_list()
+  })
+
+  this.cfg.host_list = raw_list.map((n) => n.toLowerCase())
+}
+
+exports.load_allowed_msgid_domains = function () {
+  const raw_list = this.config.get('bounce_allowed_msgid_domains', 'list', () => {
+    this.load_allowed_msgid_domains()
+  })
+
+  this.cfg.allowed_msgid_domains = raw_list.map((n) => n.toLowerCase())
 }
 
 exports.load_bounce_ini = function () {
@@ -34,10 +47,8 @@ exports.load_bounce_ini = function () {
     'bounce.ini',
     {
       booleans: [
-        '-check.reject_all',
         '+check.single_recipient',
         '-check.empty_return_path',
-        '+check.bad_rcpt',
         '+check.bounce_spf',
         '+check.non_local_msgid',
 
@@ -45,22 +56,30 @@ exports.load_bounce_ini = function () {
         '-reject.empty_return_path',
         '-reject.bounce_spf',
         '-reject.non_local_msgid',
+        '+reject.bad_rcpt',
+        '-reject.all_bounces',
       ],
     },
     () => {
       this.load_bounce_ini()
     },
   )
+
+  // legacy settings
+  const c = this.cfg
+  if (c.check.reject_all) c.reject.all_bounces = c.check.reject_all
 }
 
-exports.reject_all = function (next, connection, params) {
-  if (!this.cfg.check.reject_all) return next()
+exports.reject_all = function (next, connection) {
+  if (!this.cfg.reject.all_bounces) return next()
 
-  const mail_from = params[0]
+  const { transaction } = connection
+  if (!transaction) return next()
+
   // bounce messages are from null senders
-  if (!this.has_null_sender(connection, mail_from)) return next()
+  if (!this.has_null_sender(transaction)) return next()
 
-  connection.transaction.results.add(this, {
+  transaction.results.add(this, {
     fail: 'bounces_accepted',
     emit: true,
   })
@@ -68,9 +87,12 @@ exports.reject_all = function (next, connection, params) {
 }
 
 exports.single_recipient = function (next, connection) {
-  if (!this?.cfg?.check?.single_recipient) return next()
-  if (!this.has_null_sender(connection)) return next()
+  if (!this.cfg.check.single_recipient) return next()
+
   const { transaction, relaying, remote } = connection
+  if (!transaction) return next()
+
+  if (!this.has_null_sender(transaction)) return next()
 
   // Valid bounces have a single recipient
   if (transaction.rcpt_to.length === 1) {
@@ -103,16 +125,21 @@ exports.single_recipient = function (next, connection) {
 
   transaction.results.add(this, { fail: 'single_recipient', emit: true })
 
-  if (!this.cfg.reject.single_recipient) return next()
+  if (this.cfg.reject.single_recipient) {
+    return next(DENY, 'this bounce message has too many recipients')
+  }
 
-  next(DENY, 'this bounce message does not have 1 recipient')
+  next()
 }
 
 exports.empty_return_path = function (next, connection) {
   if (!this.cfg.check.empty_return_path) return next()
-  if (!this.has_null_sender(connection)) return next()
 
   const { transaction } = connection
+  if (!transaction) return next()
+
+  if (!this.has_null_sender(transaction)) return next()
+
   // Bounce messages generally do not have a Return-Path set. This checks
   // for that. But whether it should is worth questioning...
 
@@ -128,73 +155,70 @@ exports.empty_return_path = function (next, connection) {
   // validate that the Return-Path header is empty, RFC 3834
 
   const rp = transaction.header.get('Return-Path')
-  if (!rp) {
-    transaction.results.add(this, { pass: 'empty_return_path' })
-    return next()
-  }
-
-  if (rp === '<>') {
+  if (!rp || rp === '<>') {
     transaction.results.add(this, { pass: 'empty_return_path' })
     return next()
   }
 
   transaction.results.add(this, { fail: 'empty_return_path', emit: true })
-  return next(DENY, 'bounce with non-empty Return-Path (RFC 3834)')
+
+  if (this.cfg.reject.empty_return_path) {
+    return next(DENY, 'bounce with non-empty Return-Path (RFC 3834)')
+  }
+
+  next()
 }
 
-exports.bad_rcpt = function (next, connection) {
-  if (!this.cfg.check.bad_rcpt) return next()
-  if (!this.has_null_sender(connection)) return next()
-  if (!this.cfg.invalid_addrs) return next()
+exports.bad_rcpt = function (next, connection, rcpt) {
+  if (!this.cfg.reject.bad_rcpt) return next()
 
   const { transaction } = connection
-  for (const element of transaction.rcpt_to) {
-    const rcpt = element.address()
-    if (!this.cfg.invalid_addrs[rcpt]) continue
+  if (!transaction) return next()
+
+  if (!this.has_null_sender(transaction)) return next()
+
+  if (this.cfg.invalid_addrs.includes(rcpt.address().toLowerCase())) {
     transaction.results.add(this, { fail: 'bad_rcpt', emit: true })
-    return next(DENY, 'That recipient does not accept bounces')
+    return next(DENY, `${rcpt.address()} does not accept bounces`)
   }
   transaction.results.add(this, { pass: 'bad_rcpt' })
 
   next()
 }
 
-exports.has_null_sender = function (connection, mail_from) {
-  const transaction = connection?.transaction
-  if (!transaction) return false
-
-  if (!mail_from) mail_from = transaction.mail_from
-
+exports.has_null_sender = function (transaction) {
   // bounces have a null sender.
   // null sender could also be tested with mail_from.user
   // Why would isNull() exist if it wasn't the right way to test this?
-  transaction.results.add(this, { isa: !!mail_from.isNull() })
-  return !!mail_from.isNull()
+  const is_null_sender = !!transaction.mail_from.isNull()
+  transaction.results.add(this, { isa: is_null_sender ? 'yes' : 'no' })
+  return is_null_sender
 }
 
-const message_id_re = /^Message-ID:\s*(<?[^>]+>?)/gim
+const message_id_re = /^Message-ID:\s*<[^@>]+@([^>]+)>/gim  // this should match on the host name
 
-function find_message_id_headers(headers, body, connection, self) {
+function find_message_id_headers(domains, body, connection, self) {
   if (!body) return
 
-  let match
-  while ((match = message_id_re.exec(body.bodytext))) {
-    const mid = match[1]
-    headers[mid] = true
+ const matches = body.bodytext.matchAll(message_id_re);
+ for (const match of matches) {
+    domains.add(match[1].toLowerCase());
   }
 
-  for (let i = 0, l = body.children.length; i < l; i++) {
-    // Recure to any MIME children
-    find_message_id_headers(headers, body.children[i], connection, self)
+  for (const child of body.children) {
+    // Recurse to any MIME children
+    find_message_id_headers(domains, child, connection, self)
   }
 }
 
 exports.non_local_msgid = function (next, connection) {
   if (!this.cfg.check.non_local_msgid) return next()
-  if (!this.has_null_sender(connection)) return next()
 
-  const transaction = connection?.transaction
+  const { transaction } = connection
   if (!transaction) return next()
+
+  if (!this.has_null_sender(transaction)) return next()
+
   // Bounce messages usually contain the headers of the original message
   // in the body. This parses the body, searching for the Message-ID header.
   // It then inspects the contents of that header, extracting the domain part,
@@ -205,71 +229,69 @@ exports.non_local_msgid = function (next, connection) {
   // check Message-ID on outbound and modify non-conforming Message-IDs.
   //
   // NOTE 2: Searching the bodytext of a bounce is too simple. The bounce
-  // message should exist as a MIME Encoded part. See here for ideas
-  //     http://lamsonproject.org/blog/2009-07-09.html
-  //     http://lamsonproject.org/docs/bounce_detection.html
+  // message should exist as a MIME Encoded part.
 
-  let matches = {}
-  find_message_id_headers(matches, transaction.body, connection, this)
-  matches = Object.keys(matches)
-  connection.logdebug(this, `found Message-IDs: ${matches.join(', ')}`)
+  const domains = new Set()
+  find_message_id_headers(domains, transaction.body, connection, this)
+  connection.logdebug(this, `found Message-IDs: ${[...domains].join(', ')}`)
 
-  if (!matches.length) {
+  if (domains.size === 0) {
     connection.loginfo(this, 'no Message-ID matches')
     transaction.results.add(this, { fail: 'Message-ID' })
     if (!this.cfg.reject.non_local_msgid) return next()
     return next(
       DENY,
-      `bounce without Message-ID in headers, unable to verify that I sent it`,
+      `bounce without Message-ID in headers, I didn't send it`,
     )
   }
 
-  const domains = []
-  for (const match of matches) {
-    const res = match.match(/@([^>]*)>?/i)
-    if (!res) continue
-    domains.push(res[1])
+  for (const domain of domains) {
+    // is domain valid?
+    if (!tlds.get_organizational_domain(domain)) {
+      domains.delete(domain)
+    }
+
+    // is domain allowed?
+    if (this.cfg.allowed_msgid_domains.includes(domain)) {
+      connection.loginfo(this, `non_local_msgid: domain matches allowed msgid`)
+      transaction.results.add(this, { pass: 'Message-ID allowed domain' })
+      return next()
+    }
+
+    // is local domain?
+    if (this.cfg.host_list.includes(domain)) {
+      connection.loginfo(this, `bounce Message-ID domain matches local host`)
+      transaction.results.add(this, { pass: 'Message-ID valid domain' })
+      return next()
+    }
+
+    if (domain === transaction.rcpt_to[0].host) {
+      connection.loginfo(
+        this,
+        `bounce Message-ID domain matches the recipient host`,
+      )
+      transaction.results.add(this, { pass: 'Message-ID valid domain' })
+      return next()
+    }
   }
 
-  if (domains.length === 0) {
+  if (domains.size === 0) {
     connection.loginfo(this, 'no domain(s) parsed from Message-ID headers')
     transaction.results.add(this, { fail: 'Message-ID parseable' })
     if (!this.cfg.reject.non_local_msgid) return next()
-    return next(DENY, `bounce with invalid Message-ID, I didn't send it.`)
+    return next(DENY, `bounce Message-ID without valid domain, I didn't send it`)
   }
 
-  connection.logdebug(this, domains)
+  transaction.results.add(this, { fail: 'Message-ID non-local domain' })
 
-  const valid_domains = []
-  for (const domain of domains) {
-    const org_dom = tlds.get_organizational_domain(domain)
-    if (!org_dom) {
-      continue
-    }
-    valid_domains.push(org_dom)
-  }
-
-  if (valid_domains.length === 0) {
-    transaction.results.add(this, { fail: 'Message-ID valid domain' })
-    if (!this.cfg.reject.non_local_msgid) return next()
+  if (this.cfg.reject.non_local_msgid) {
     return next(
       DENY,
-      `bounce Message-ID without valid domain, I didn't send it.`,
+      `bounce Message-ID with non-local domain, I didn't send it`,
     )
   }
 
   next()
-
-  /* The code below needs some kind of test to say the domain isn't local.
-        this would be hard to do without knowing how you have Haraka configured.
-        e.g. it could be config/host_list, or it could be some other way.
-        - hence I added the return next() above or this test can never be correct.
-    */
-  // we wouldn't have accepted the bounce if the recipient wasn't local
-  // transaction.results.add(plugin,
-  //         {fail: 'Message-ID not local', emit: true });
-  // if (!plugin.cfg.reject.non_local_msgid) return next();
-  // return next(DENY, "bounce with non-local Message-ID (RFC 3834)");
 }
 
 // Lazy regexp to get IPs from Received: headers in bounces
@@ -293,24 +315,27 @@ function find_received_headers(ips, body, connection, self) {
 }
 
 exports.bounce_spf_enable = function (next, connection) {
-  if (!connection.transaction) return next()
+  const { transaction } = connection
+  if (!transaction) return next()
+
   if (this.cfg.check.bounce_spf) {
-    connection.transaction.parse_body = true
+    transaction.parse_body = true
   }
   next()
 }
 
-exports.bounce_spf = function (next, connection) {
+exports.bounce_spf = async function (next, connection) {
   if (!this.cfg.check.bounce_spf) return next()
-  if (!this.has_null_sender(connection)) return next()
 
-  const txn = connection?.transaction
-  if (!txn) return next()
+  const { transaction } = connection
+  if (!transaction) return next()
+
+  if (!this.has_null_sender(transaction)) return next()
 
   // Recurse through all textual parts and store all parsed IPs
   // in an object to remove any duplicates which might appear.
   let ips = {}
-  find_received_headers(ips, txn.body, connection, this)
+  find_received_headers(ips, transaction.body, connection, this)
   ips = Object.keys(ips)
   if (!ips.length) {
     connection.loginfo(this, 'No received headers found in message')
@@ -319,74 +344,50 @@ exports.bounce_spf = function (next, connection) {
 
   connection.logdebug(this, `found IPs to check: ${ips.join(', ')}`)
 
-  let pending = 0
-  let aborted = false
-  let called_cb = false
-  let timer
+  const spf = new SPF()
 
-  function run_cb(abort, retval, msg) {
-    if (aborted) return
-    if (abort) aborted = true
-    if (!aborted && pending > 0) return
-    if (called_cb) return
-    clearTimeout(timer)
-    called_cb = true
-    next(retval, msg)
+  for (const ip of ips) {
+    let result
+    try {
+      result = await spf.check_host(
+        ip,
+        transaction.rcpt_to[0].host,
+        transaction.rcpt_to[0].address(),
+      )
+    } catch (err) {
+      connection.logerror(this, err.message)
+      return next()
+    }
+
+    connection.logdebug(this, `ip=${ip} spf_result=${spf.result(result)}`)
+
+    switch (result) {
+      case spf.SPF_NONE:
+      // falls through, domain doesn't publish an SPF record
+      case spf.SPF_TEMPERROR:
+      // falls through
+      case spf.SPF_PERMERROR:
+        // Abort as all subsequent lookups will return this
+        connection.logdebug(this, `Aborted: SPF returned ${spf.result(result)}`)
+        transaction.results.add(this, { skip: 'bounce_spf' })
+        return next()
+      case spf.SPF_PASS:
+        // Presume this is a valid bounce
+        // TODO: this could be spoofed; could weight each IP to combat
+        connection.loginfo(this, `Valid bounce originated from ${ip}`)
+        transaction.results.add(this, { pass: 'bounce_spf' })
+        return next()
+      default:
+        continue
+    }
   }
 
-  timer = setTimeout(
-    () => {
-      connection.logerror(this, 'Timed out')
-      txn.results.add(this, { skip: 'bounce_spf(timeout)' })
-      return run_cb(true)
-    },
-    (this.timeout - 1) * 1000,
-  )
+  // We've checked all the IPs and none of them returned Pass
+  transaction.results.add(this, { fail: 'bounce_spf', emit: true })
 
-  ips.forEach((ip) => {
-    if (aborted) return
-    const spf = new SPF()
-    pending++
-    spf.check_host(
-      ip,
-      txn.rcpt_to[0].host,
-      txn.rcpt_to[0].address(),
-      (err, result) => {
-        if (aborted) return
-        pending--
-        if (err) {
-          connection.logerror(this, err.message)
-          return run_cb()
-        }
-        connection.logdebug(this, `ip=${ip} spf_result=${spf.result(result)}`)
-        switch (result) {
-          case spf.SPF_NONE:
-          // falls through, domain doesn't publish an SPF record
-          case spf.SPF_TEMPERROR:
-          case spf.SPF_PERMERROR:
-            // Abort as all subsequent lookups will return this
-            connection.logdebug(
-              this,
-              `Aborted: SPF returned ${spf.result(result)}`,
-            )
-            txn.results.add(this, { skip: 'bounce_spf' })
-            return run_cb(true)
-          case spf.SPF_PASS:
-            // Presume this is a valid bounce
-            // TODO: this could be spoofed; could weight each IP to combat
-            connection.loginfo(this, `Valid bounce originated from ${ip}`)
-            txn.results.add(this, { pass: 'bounce_spf' })
-            return run_cb(true)
-        }
-        if (pending === 0 && !aborted) {
-          // We've checked all the IPs and none of them returned Pass
-          txn.results.add(this, { fail: 'bounce_spf', emit: true })
-          if (!this.cfg.reject.bounce_spf) return run_cb()
-          run_cb(false, DENY, 'Invalid bounce (spoofed sender)')
-        }
-      },
-    )
-    // No lookups run for some reason
-    if (pending === 0 && !aborted) run_cb()
-  })
+  if (this.cfg.reject.bounce_spf) {
+    return next(DENY, 'Invalid bounce (spoofed sender)')
+  }
+
+  next()
 }
