@@ -93,7 +93,7 @@ exports.reject_all = function (next, connection) {
 exports.single_recipient = function (next, connection) {
   if (!this.cfg.check.single_recipient) return next()
 
-  const { transaction, relaying, remote } = connection
+  const { transaction } = connection
   if (!transaction) return next()
 
   if (!this.has_null_sender(transaction)) return next()
@@ -101,24 +101,6 @@ exports.single_recipient = function (next, connection) {
   // Valid bounces have a single recipient
   if (transaction.rcpt_to.length === 1) {
     transaction.results.add(this, { pass: 'single_recipient', emit: true })
-    return next()
-  }
-
-  // Skip this check for relays or private_ips. This is because Microsoft
-  // Exchange will send mail to distribution groups using the null-sender
-  // if the option 'Do not send delivery reports' is checked
-  if (relaying) {
-    transaction.results.add(this, {
-      skip: 'single_recipient(relay)',
-      emit: true,
-    })
-    return next()
-  }
-  if (remote.is_private) {
-    transaction.results.add(this, {
-      skip: 'single_recipient(private_ip)',
-      emit: true,
-    })
     return next()
   }
 
