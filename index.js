@@ -2,7 +2,7 @@
 const { SPF } = require('haraka-plugin-spf')
 const net_utils = require('haraka-net-utils')
 const crypto = require('node:crypto')
-const Address = require('address-rfc2821').Address
+const addrparser = require('address-rfc2822')
 
 exports.register = function () {
   this.load_bounce_ini()
@@ -541,16 +541,24 @@ exports.validate_bounce = function (next, connection) {
     }
   } else if (from && date && message_id) {
     const from_header = transaction.header.get_decoded('From').toLowerCase()
-    let from
+    let parsed_from
     try {
-      from = new Address(from_header).address()
+      parsed_from = addrparser.parse(from_header)[0].address
     } catch (err) {
       // ignore error
-      connection.logerror(this, `validate_bounce: error: ${err.message}`)
+      connection.loginfo(this, `address-rfc2822 parsing error: ${err.message}`)
+
+      transaction.results.add(this, {
+        skip: 'validate_bounce',
+        msg: 'invalid from header',
+        emit: true,
+      })
+      return next()
     }
+
     const rcpt = transaction.rcpt_to[0].address().toLowerCase()
 
-    if (this.is_whitelisted(rcpt, from)) {
+    if (this.is_whitelisted(rcpt, parsed_from)) {
       transaction.results.add(this, {
         skip: 'validate_bounce',
         msg: 'whitelisted',

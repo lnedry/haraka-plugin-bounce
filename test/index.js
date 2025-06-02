@@ -1240,6 +1240,37 @@ describe('validate_bounce', function () {
     }, this.connection)
   })
 
+  it('is missing hash header and address parsing fails', function (done) {
+    const from = 'mail delivery system <mailer-daemon@example.com>'
+    const rcpt = new Address.Address('test@example.com')
+
+    this.plugin.cfg.reject.hash_validation = false
+    this.connection.transaction.rcpt_to[0] = rcpt
+    this.connection.transaction.add_header('From', from)
+
+    delete this.connection.transaction.notes.bounce.headers.hash
+
+    this.plugin.validate_bounce((code, msg) => {
+      assert.ok(
+        this.connection.transaction.results.has(
+          this.plugin,
+          'fail',
+          'validate_bounce',
+        ),
+      )
+      assert.ok(
+        this.connection.transaction.results.has(
+          this.plugin,
+          'msg',
+          'missing validation hash',
+        ),
+      )
+      assert.equal(code, undefined)
+      assert.equal(msg, undefined)
+      done()
+    }, this.connection)
+  })
+
   it('is missing hash header and email address is whitelisted', function (done) {
     const from = '<no-reply@example.com>'
     const rcpt = new Address.Address('test@example.com')
@@ -1301,6 +1332,8 @@ describe('validate_bounce', function () {
   })
 
   it('is missing hash header', function (done) {
+    const from = '<info@example.net>'
+    this.connection.transaction.add_header('From', from)
     this.plugin.cfg.reject.hash_validation = false
 
     delete this.connection.transaction.notes.bounce.headers.hash
@@ -1327,6 +1360,9 @@ describe('validate_bounce', function () {
   })
 
   it('will deny when missing hash header', function (done) {
+    const from = '<info@example.net>'
+    this.connection.transaction.add_header('From', from)
+
     delete this.connection.transaction.notes.bounce.headers.hash
 
     this.plugin.validate_bounce((code, msg) => {
