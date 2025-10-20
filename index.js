@@ -679,7 +679,7 @@ exports.find_bounce_headers = function (body) {
     for (const child of body.children) {
       const child_hdrs = this.find_bounce_headers(child)
 
-      // were any headers were found?
+      // were any headers found?
       if (
         child_hdrs.from ||
         child_hdrs.date ||
