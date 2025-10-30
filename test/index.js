@@ -17,6 +17,32 @@ beforeEach(function () {
   this.connection.transaction.rcpt_to.push(new Address.Address('test@example.com'))
 
   this.plugin.register()
+  this.plugin.cfg = {
+    validation: {
+      max_hash_age_days: 6,
+      hash_algorithm: 'sha256',
+      secret: crypto.randomBytes(32).toString('base64'),
+    },
+    check: {
+      single_recipient: true,
+      empty_return_path: false,
+      bounce_spf: true,
+      hash_validation: false,
+      hash_date: true,
+    },
+    reject: {
+      single_recipient: true,
+      empty_return_path: false,
+      bounce_spf: false,
+      bad_rcpt: true,
+      all_bounces: false,
+      hash_validation: false,
+      hash_date: false,
+    },
+    skip: {
+      remaining_plugins: false
+    }
+  }
 
   this.should_skip_spy = sinon.spy(this.plugin, 'should_skip')
 })
@@ -25,17 +51,17 @@ afterEach(sinon.restore)
 
 describe('register', function () {
   it('should have register function', function () {
-    const load_bounce_ini_stub = sinon.stub(this.plugin, 'load_bounce_ini')
-    const load_bounce_bad_rcpt_stub = sinon.stub(this.plugin, 'load_bounce_bad_rcpt')
-    const load_bounce_whitelist_stub = sinon.stub(this.plugin, 'load_bounce_whitelist')
+    const load_bounce_ini_spy = sinon.spy(this.plugin, 'load_bounce_ini')
+    const load_bounce_bad_rcpt_spy = sinon.spy(this.plugin, 'load_bounce_bad_rcpt')
+    const load_bounce_whitelist_spy = sinon.spy(this.plugin, 'load_bounce_whitelist')
 
     assert.equal('function', typeof this.plugin.register)
 
     this.plugin.register()
 
-    assert.ok(load_bounce_ini_stub.calledOnce)
-    assert.ok(load_bounce_bad_rcpt_stub.calledOnce)
-    assert.ok(load_bounce_whitelist_stub.calledOnce)
+    assert.ok(load_bounce_ini_spy.calledOnce)
+    assert.ok(load_bounce_bad_rcpt_spy.calledOnce)
+    assert.ok(load_bounce_whitelist_spy.calledOnce)
   })
 
   it('registers hooks', function () {
@@ -55,61 +81,40 @@ describe('register', function () {
 
 describe('load_configs', function () {
   it('load_bounce_ini', function () {
-    const validate_config_stub = sinon.stub(this.plugin, 'validate_config')
+    const validate_config_spy = sinon.spy(this.plugin, 'validate_config')
 
     this.plugin.load_bounce_ini()
 
-    assert.ok(validate_config_stub.calledOnce)
+    assert.ok(validate_config_spy.calledOnce)
     assert.ok(this.plugin.cfg.check)
     assert.ok(this.plugin.cfg.reject)
     assert.ok(this.plugin.cfg.validation)
   })
 
   it('load_bounce_bad_rcpt', function () {
-    const load_bounce_bad_rcpt_stub = sinon.stub(this.plugin, 'load_bounce_bad_rcpt')
+    const load_bounce_bad_rcpt_spy = sinon.spy(this.plugin, 'load_bounce_bad_rcpt')
 
     this.plugin.load_bounce_bad_rcpt()
 
-    assert.ok(load_bounce_bad_rcpt_stub.calledOnce)
-    assert.ok(this.plugin.cfg.invalid_addrs)
+    assert.ok(load_bounce_bad_rcpt_spy.calledOnce)
+    assert.deepEqual(this.plugin.cfg.invalid_addrs, [])
   })
 
   it('load_bounce_whitelist', function () {
-    const load_bounce_whitelist_stub = sinon.stub(this.plugin, 'load_bounce_whitelist')
+    const load_bounce_whitelist_spy = sinon.spy(this.plugin, 'load_bounce_whitelist')
 
     this.plugin.load_bounce_whitelist()
 
-    assert.ok(load_bounce_whitelist_stub.calledOnce)
+    assert.ok(load_bounce_whitelist_spy.calledOnce)
     assert.ok(this.plugin.cfg.whitelist)
   })
 })
 
 describe('validate_config', function () {
-  let getHashes_stub, logerror_stub
+  let getHashes_stub, logerror_spy
 
   beforeEach(function () {
-    this.plugin.cfg = {
-      validation: {
-        max_hash_age_days: 6,
-        hash_algorithm: 'sha256',
-        secret: crypto.randomBytes(32).toString('base64'),
-      },
-      check: {
-        single_recipient: true,
-        empty_return_path: false,
-        bounce_spf: true,
-        hash_validation: false,
-        hash_date: true,
-      },
-      reject: {
-        single_recipient: true,
-        empty_return_path: false,
-        bounce_spf: false,
-        hash_validation: false,
-        hash_date: false,
-      },
-    }
-    logerror_stub = sinon.stub(this.plugin, 'logerror')
+    logerror_spy = sinon.spy(this.plugin, 'logerror')
     getHashes_stub = sinon.stub(crypto, 'getHashes')
     getHashes_stub.returns(['sha256', 'sha512', 'md5'])
   })
@@ -187,7 +192,7 @@ describe('validate_config', function () {
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
-    assert.ok(logerror_stub.calledOnce)
+    assert.ok(logerror_spy.calledOnce)
     assert.equal(this.plugin.cfg.check.hash_validation, false)
   })
 
@@ -198,7 +203,7 @@ describe('validate_config', function () {
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
-    assert.ok(logerror_stub.calledOnce)
+    assert.ok(logerror_spy.calledOnce)
     assert.equal(this.plugin.cfg.check.hash_validation, false)
   })
 
@@ -209,7 +214,7 @@ describe('validate_config', function () {
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
-    assert.ok(logerror_stub.notCalled)
+    assert.ok(logerror_spy.notCalled)
   })
 })
 
@@ -470,25 +475,22 @@ describe('bad_rcpt', function () {
 })
 
 describe('has_null_sender', function () {
-  it('has null sender', function (done) {
+  it('has null sender', function () {
     assert.ok(this.plugin.has_null_sender(this.connection.transaction))
 
     assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
-    done()
   })
 
-  it('has empty string sender', function (done) {
+  it('has empty string sender', function () {
     this.connection.transaction.mail_from = new Address.Address('')
     assert.ok(this.plugin.has_null_sender(this.connection.transaction))
     assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
-    done()
   })
 
-  it('is not a null sender', function (done) {
+  it('is not a null sender', function () {
     this.connection.transaction.mail_from = new Address.Address('user@example.com')
     assert.equal(this.plugin.has_null_sender(this.connection.transaction), false)
     assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'no'))
-    done()
   })
 })
 
@@ -851,15 +853,11 @@ describe('validate_bounce', function () {
   let date_header, from_header, message_id
 
   beforeEach(function () {
-    this.plugin.cfg.check.hash_date = true
     this.plugin.cfg.check.hash_validation = true
     this.plugin.cfg.reject.hash_validation = true
     this.plugin.cfg.reject.hash_date = true
-    this.plugin.cfg.validation = {
-      max_hash_age_days: 6,
-      hash_algorithm: 'sha256',
-      secret: crypto.randomBytes(32).toString('base64'),
-    }
+
+    this.plugin.cfg.whitelist = {}
 
     this.connection.transaction.body = {
       bodytext: '',
@@ -912,7 +910,7 @@ describe('validate_bounce', function () {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
       assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash length mismatch'))
       assert(find_bounce_headers_stub.calledOnce)
-      assert(find_bounce_headers_stub.calledWith(this.connection.transaction, this.connection.transaction.body))
+      assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
       assert.equal(code, undefined)
       assert.equal(msg, undefined)
       done()
@@ -958,7 +956,7 @@ describe('validate_bounce', function () {
     this.plugin.validate_bounce((code, msg) => {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'validate_bounce'))
       assert(find_bounce_headers_stub.calledOnce)
-      assert(find_bounce_headers_stub.calledWith(this.connection.transaction, this.connection.transaction.body))
+      assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
       assert.equal(code, undefined)
       assert.equal(msg, undefined)
       done()
@@ -1094,20 +1092,19 @@ describe('validate_bounce', function () {
   })
 
   it('is missing hash header and address parsing fails', function (done) {
-    const from = 'mail delivery system <mailer-daemon@example.com>'
     const rcpt = new Address.Address('test@example.com')
 
     this.plugin.cfg.reject.hash_validation = false
     this.connection.transaction.rcpt_to[0] = rcpt
-    this.connection.transaction.add_header('From', from)
+    this.connection.transaction.add_header('From', 'evil-mailer')
 
     const headers = create_headers(this.plugin)
     delete headers.hash
     find_bounce_headers_stub.returns(headers)
 
     this.plugin.validate_bounce((code, msg) => {
-      assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
-      assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing validation hash'))
+      assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
+      assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid from header'))
       assert.equal(code, undefined)
       assert.equal(msg, undefined)
       done()
@@ -1195,7 +1192,7 @@ describe('validate_bounce', function () {
   })
 
   it('will deny when missing hash header', function (done) {
-    const from = '<info@example.net>'
+    const from = '<info@example.org>'
     this.connection.transaction.add_header('From', from)
 
     const headers = create_headers(this.plugin)
@@ -1236,7 +1233,7 @@ describe('validate_bounce', function () {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_date'))
       assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash is too old'))
       assert(find_bounce_headers_stub.calledOnce)
-      assert(find_bounce_headers_stub.calledWith(this.connection.transaction, this.connection.transaction.body))
+      assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
       assert.equal(code, DENY)
       assert.equal(msg, 'invalid bounce')
       done()
@@ -1255,7 +1252,7 @@ describe('validate_bounce', function () {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_date'))
       assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash is too old'))
       assert(find_bounce_headers_stub.calledOnce)
-      assert(find_bounce_headers_stub.calledWith(this.connection.transaction, this.connection.transaction.body))
+      assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
       assert.equal(code, undefined)
       assert.equal(msg, undefined)
       done()
@@ -1295,29 +1292,16 @@ describe('validate_bounce', function () {
 })
 
 describe('find_bounce_headers', function () {
-  let date_header, from_header, message_id, hash, amalgam
+  let date, from, message_id, hash
   let msg_body, transaction
 
   beforeEach(function () {
-    date_header = new Date().toISOString()
-    from_header = '<test@EXAMPLE.com>'
-    message_id = '<test@example.COM>'
-
-    this.plugin.cfg.validation = {
-      hash_algorithm: 'sha256',
-      secret: crypto.randomBytes(32).toString('base64'),
-    }
-
-    amalgam = `${from_header}:${date_header}:${message_id}`
-    hash = crypto
-      .createHmac(this.plugin.cfg.validation.hash_algorithm, this.plugin.cfg.validation.secret)
-      .update(amalgam)
-      .digest('hex')
+    ({from, date, message_id, hash} = create_headers(this.plugin))
 
     msg_body = `
 X-Haraka-Bounce-Validation: ${hash}
-From: ${from_header}
-Date: ${date_header}
+From: ${from}
+Date: ${date}
 Message-ID: ${message_id}
 `
     transaction = this.connection.transaction
@@ -1339,41 +1323,31 @@ Message-ID: ${message_id}
   it('has all headers in body', function () {
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from_header)
-    assert.equal(headers.date, date_header)
+    assert.equal(headers.from, from)
+    assert.equal(headers.date, date)
     assert.equal(headers.message_id, message_id)
     assert.equal(headers.hash, hash)
   })
 
   it('has From header in body', function () {
-    transaction.body.bodytext = `From: ${from_header}\n`
+    transaction.body.bodytext = `From: ${from}
+Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from_header)
+    assert.equal(headers.from, from)
     assert.equal(headers.date, undefined)
     assert.equal(headers.message_id, undefined)
     assert.equal(headers.hash, undefined)
   })
 
   it('has Date header in body', function () {
-    transaction.body.bodytext = `Date: ${date_header}\n`
+    transaction.body.bodytext = `Date: ${date}\n`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
     assert.equal(headers.from, undefined)
-    assert.equal(headers.date, date_header)
-    assert.equal(headers.message_id, undefined)
-    assert.equal(headers.hash, undefined)
-  })
-
-  it('has one header in body', function () {
-    transaction.body.bodytext = `Date: ${date_header}\n`
-
-    const headers = this.plugin.find_bounce_headers(transaction.body)
-
-    assert.equal(headers.from, undefined)
-    assert.equal(headers.date, date_header)
+    assert.equal(headers.date, date)
     assert.equal(headers.message_id, undefined)
     assert.equal(headers.hash, undefined)
   })
@@ -1400,30 +1374,25 @@ Message-ID: ${message_id}
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from_header)
-    assert.equal(headers.date, date_header)
+    assert.equal(headers.from, from)
+    assert.equal(headers.date, date)
     assert.equal(headers.message_id, message_id)
     assert.equal(headers.hash, hash)
   })
 
   it('has folded headers', function () {
-    from_header = `"Dr. Smith - Back & Neck Care Center of San Fransisco" <dr.smith@example.com>`
-    hash = crypto
-      .createHmac(this.plugin.cfg.validation.hash_algorithm, this.plugin.cfg.validation.secret)
-      .update(amalgam)
-      .digest('hex')
-
+    const unfolded_from = `"Dr. Smith - Dr. Smith's Snake Oil Emporium" <dr.smith@example.com>`
+    const folded_from   = `"Dr. Smith - Dr. Smith's Snake Oil Emporium"\n  <dr.smith@example.com>`
     transaction.body.bodytext = `
 Message-ID: ${message_id}
-Date: ${date_header}
-From: "Dr. Smith - Back & Neck Care Center of San Fransisco"
-  <dr.smith@example.com>
+Date: ${date}
+From: ${folded_from}
 X-Haraka-Bounce-Validation: ${hash}
 `
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from_header)
-    assert.equal(headers.date, date_header)
+    assert.equal(headers.from, unfolded_from)
+    assert.equal(headers.date, date)
     assert.equal(headers.message_id, message_id)
     assert.equal(headers.hash, hash)
   })
@@ -1570,34 +1539,27 @@ Received: from mail.example.com (mail.example.com [${ip2}])
 })
 
 describe('is_date_valid', function () {
-  beforeEach(function () {
-    this.plugin.cfg.validation.max_hash_age_days = 6
-  })
-
-  it('has recent date', function (done) {
+  it('has recent date', function () {
     const oneDayAgo = new Date(new Date() - 1000 * 60 * 60 * 24 * 1)
     const date_header = oneDayAgo.toUTCString()
 
     const result = this.plugin.is_date_valid(date_header)
     assert(result.valid)
-    done()
   })
 
-  it('has expired date', function (done) {
+  it('has expired date', function () {
     const SevenDaysAgo = new Date(new Date() - 1000 * 60 * 60 * 24 * 7)
     const date_header = SevenDaysAgo.toUTCString()
     const result = this.plugin.is_date_valid(date_header)
     assert.equal(result.valid, false)
     assert.equal(result.msg, 'hash is too old')
-    done()
   })
 
-  it('has invalid date', function (done) {
+  it('has invalid date', function () {
     const not_a_date = 'hello world'
     const result = this.plugin.is_date_valid(not_a_date)
     assert.equal(result.valid, false)
     assert.equal(result.msg, 'invalid date header')
-    done()
   })
 })
 
@@ -1629,6 +1591,78 @@ describe('is_whitelisted', function () {
   })
 })
 
+describe('extract_header', function () {
+  let bodytext, from, date, message_id, hash
+  beforeEach(function () {
+    ({from, date, message_id, hash} = create_headers(this.plugin))
+    bodytext = `From: ${from}
+Date: ${date}
+Message-ID: ${message_id}
+X-Haraka-Bounce-Validation: ${hash}
+`
+  })
+
+  it('should return undefined if bodytext is missing', function () {
+    bodytext = null
+
+    const value = this.plugin.extract_header(bodytext, 'From')
+
+    assert.strictEqual(value, undefined)
+  })
+
+  it('should return undefined if bodytext is not a string', function () {
+    bodytext = {}
+
+    const value = this.plugin.extract_header(bodytext, 'From')
+
+    assert.strictEqual(value, undefined)
+  })
+
+  it('should extract the From header', function () {
+    const value = this.plugin.extract_header(bodytext, 'From')
+
+    assert.strictEqual(value, from)
+  })
+
+  it('should extract the Date header', function () {
+    const value = this.plugin.extract_header(bodytext, 'Date')
+
+    assert.strictEqual(value, date)
+  })
+
+  it('should extract the Message-ID header', function () {
+    const value = this.plugin.extract_header(bodytext, 'Message-ID')
+
+    assert.strictEqual(value, message_id)
+  })
+
+  it('should extract the X-Haraka-Bounce-Validation header', function () {
+    const value = this.plugin.extract_header(bodytext, 'X-Haraka-Bounce-Validation')
+
+    assert.strictEqual(value, hash)
+  })
+
+  it('should extract the folded From header', function () {
+    const from_header = `"Dr. Smith - Dr. Smith's Snake Oil Emporium" <dr.smith@example.com>`
+
+    bodytext = `From: "Dr. Smith - Dr. Smith's Snake Oil Emporium"
+  <dr.smith@example.com>
+Date: ${date}
+Message-ID: ${message_id}
+X-Haraka-Bounce-Validation: ${hash}
+`
+    const value = this.plugin.extract_header(bodytext, 'From')
+
+    assert.strictEqual(value, from_header)
+  })
+
+  it('should not extract anything', function () {
+    const value = this.plugin.extract_header(bodytext, 'In-Reply-To')
+
+    assert.strictEqual(value, undefined)
+  })
+})
+
 function create_headers(plugin, options = {}) {
   const date_header = options.date_header || new Date().toISOString()
   const from_header = options.from_header || '<test@example.com>'
@@ -1647,6 +1681,6 @@ function create_headers(plugin, options = {}) {
     from: from_header,
     date: date_header,
     message_id: message_id,
-    hash: hash,
+    hash: hash
   }
 }
