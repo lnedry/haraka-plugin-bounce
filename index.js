@@ -496,7 +496,7 @@ exports.validate_bounce = function (next, connection) {
 
   const { transaction } = connection
 
-  const { from, date, message_id, hash } = this.find_bounce_headers(transaction, transaction.body)
+  const { from, date, message_id, hash } = this.find_bounce_headers(transaction.body)
 
   if (hash) {
     const amalgam = `${from}:${date}:${message_id}`
@@ -598,16 +598,16 @@ exports.is_date_valid = function (date) {
   // Parse the date that the original email was sent
   const email_date = new Date(date)
   if (isNaN(email_date.getTime())) {
-    return { valid: false, msg: 'invalid date header' }
+    return {valid: false, msg: 'invalid date header'}
   }
 
   // calculate the number of days since the original email was sent
   const age = Math.floor((new Date() - email_date) / (1000 * 60 * 60 * 24))
   if (age > this.cfg.validation.max_hash_age_days) {
-    return { valid: false, msg: 'hash is too old' }
+    return {valid: false, msg: 'hash is too old'}
   }
 
-  return { valid: true }
+  return {valid: true}
 }
 
 // Lazy regexp to get IPs from Received: headers in bounces
@@ -635,10 +635,10 @@ exports.find_bounce_headers = function (body) {
 
   // Check the current body part
   if (body?.bodytext?.length) {
-    headers.from = extract_header(body.bodytext, 'From')
-    headers.date = extract_header(body.bodytext, 'Date')
-    headers.message_id = extract_header(body.bodytext, 'Message-ID')
-    headers.hash = extract_header(body.bodytext, 'X-Haraka-Bounce-Validation')
+    headers.from = this.extract_header(body.bodytext, 'From')
+    headers.date = this.extract_header(body.bodytext, 'Date')
+    headers.message_id = this.extract_header(body.bodytext, 'Message-ID')
+    headers.hash = this.extract_header(body.bodytext, 'X-Haraka-Bounce-Validation')
 
     // were any headers found?
     if (headers.from || headers.date || headers.message_id || headers.hash) {
@@ -648,7 +648,7 @@ exports.find_bounce_headers = function (body) {
 
   // Recursively check children
   if (body?.children?.length) {
-    for (const child of body.children) {
+   for (const child of body.children) {
       const child_hdrs = this.find_bounce_headers(child)
 
       // were any headers found?
@@ -671,7 +671,7 @@ exports.should_skip = function (connection) {
 }
 
 // Extracts a header value from email body text
-function extract_header(bodytext, header_name) {
+exports.extract_header = function (bodytext, header_name) {
   if (!bodytext || typeof bodytext !== 'string') return
 
   // Use a regular expression with named capture group for the header value
