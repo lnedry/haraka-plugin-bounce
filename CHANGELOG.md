@@ -12,9 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - refactored load_bounce_whitelist
 - refactored extract_header to correctly capture folded headers
 - fixed some testing bugs
-- added test coverage
 - added tests
-- removed config options to check/reject if Date header is too old or invalid. now always reject bounces with expired or invalid date header.
+- removed config options to check/reject if Date header is too old or invalid and will always reject bounces with expired or invalid date header.
 - bumped version to 2.1.3
 
 ### [2.1.2] - 2026-03-03
