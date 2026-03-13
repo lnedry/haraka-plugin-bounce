@@ -4,6 +4,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+- moved null sender check to hook_mail (check_null_sender)
+- exported extract_header() for testing
+- removed check.hash_date and reject.hash_date
+- will always reject bounces with expired or invalid date header
+- added test coverage
+- refactored load_bounce_whitelist
+- refactored extract_header to correctly capture folded headers
+- fixed some testing bugs
+- added test coverage
+- added tests
+- removed config options to check/reject if Date header is too old or invalid. now always reject bounces with expired or invalid date header.
+- bumped version to 2.1.3
+
 ### [2.1.2] - 2026-03-03
 
 - fix: isa was boolean, revert change from #4 to yes/no
