@@ -122,13 +122,14 @@ exports.load_bounce_whitelist = function () {
  * Note: This only applies to inbound messages with a null sender.
  */
 exports.check_null_sender = function (next, connection) {
-  if (!connection.relaying) {
-    const is_null_sender = connection.transaction.mail_from.isNull() ? 'yes' : 'no'
-    connection.transaction.results.add(this, {
-      isa: is_null_sender,
-      emit: true,
-    })
-  }
+  if (!connection?.transaction?.mail_from) return next()
+
+  const is_null_sender = connection.transaction.mail_from.isNull() ? 'yes' : 'no'
+  connection.transaction.results.add(this, {
+    isa: is_null_sender,
+    emit: true,
+  })
+
   next()
 }
 
