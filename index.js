@@ -54,24 +54,16 @@ exports.load_bounce_ini = function () {
 }
 
 exports.validate_config = function () {
-  if (!this.cfg.validation.max_hash_age_days) this.cfg.validation.max_hash_age_days = MAX_HASH_AGE_DAYS
-  if (!this.cfg.validation.hash_algorithm) this.cfg.validation.hash_algorithm = 'sha256'
+  const { check, reject } = this.cfg
 
-  // checks needs to be enabled for rejects to work
-  if (this.cfg.reject.single_recipient && !this.cfg.check.single_recipient) {
-    this.cfg.check.single_recipient = true
-  }
-  if (this.cfg.reject.empty_return_path && !this.cfg.check.empty_return_path) {
-    this.cfg.check.empty_return_path = true
-  }
-  if (this.cfg.reject.bounce_spf && !this.cfg.check.bounce_spf) {
-    this.cfg.check.bounce_spf = true
-  }
-  if (this.cfg.reject.hash_validation && !this.cfg.check.hash_validation) {
-    this.cfg.check.hash_validation = true
+  // checks need to be enabled for rejects to work
+  for (const key of ['single_recipient', 'empty_return_path', 'bounce_spf', 'hash_validation']) {
+    if (reject[key] && !check[key]) check[key] = true
   }
 
   if (!this.cfg.check.hash_validation) return
+  if (!this.cfg.validation.max_hash_age_days) this.cfg.validation.max_hash_age_days = MAX_HASH_AGE_DAYS
+  if (!this.cfg.validation.hash_algorithm) this.cfg.validation.hash_algorithm = 'sha256'
 
   // confirm that hash algorithm is supported
   const algorithms = crypto.getHashes()
