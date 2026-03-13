@@ -1949,7 +1949,6 @@ describe('check_null_sender', function () {
 
 function create_headers(plugin, options = {}) {
   const date_header = options.date_header || new Date().toISOString()
-  //const date_header = options.date_header || 'Sun, 9 Nov 2025 06:21:23 GMT'
   const from_header = options.from_header || 'test <test@example.com>'
   const message_id = options.message_id || '<PB8-DCB-KHNZ4Y5J3N0Z@example.com>'
 
