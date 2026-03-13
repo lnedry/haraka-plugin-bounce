@@ -10,7 +10,9 @@ exports.register = function () {
   this.load_bounce_ini()
   this.load_bounce_bad_rcpt()
   this.load_bounce_whitelist()
+  this.validate_config()
 
+  this.register_hook('mail', 'check_null_sender', -5)
   this.register_hook('mail', 'reject_all')
   this.register_hook('rcpt_ok', 'bad_rcpt')
   this.register_hook('data', 'single_recipient')
@@ -32,7 +34,6 @@ exports.load_bounce_ini = function () {
         '-check.empty_return_path',
         '+check.bounce_spf',
         '-check.hash_validation',
-        '+check.hash_date',
 
         '+reject.single_recipient',
         '-reject.empty_return_path',
@@ -40,15 +41,12 @@ exports.load_bounce_ini = function () {
         '+reject.bad_rcpt',
         '-reject.all_bounces',
         '-reject.hash_validation',
-        '-reject.hash_date',
 
         '-skip.remaining_plugins',
       ],
     },
     () => this.load_bounce_ini(),
   )
-
-  this.validate_config()
 
   // legacy settings
   const c = this.cfg
@@ -74,10 +72,6 @@ exports.validate_config = function () {
   }
 
   if (!this.cfg.check.hash_validation) return
-
-  if (this.cfg.reject.hash_date && !this.cfg.check.hash_date) {
-    this.cfg.check.hash_date = true
-  }
 
   // confirm that hash algorithm is supported
   const algorithms = crypto.getHashes()
@@ -109,9 +103,41 @@ exports.load_bounce_bad_rcpt = function () {
 }
 
 exports.load_bounce_whitelist = function () {
-  this.cfg.whitelist = this.config.get('bounce_whitelist.json', () => {
+  const whitelist = this.config.get('bounce_whitelist.json', () => {
     this.load_bounce_whitelist()
   })
+
+  // Lowercase all recipient keys and sender values for case-insensitive matching
+  this.cfg.whitelist = {}
+  if (whitelist && typeof whitelist === 'object') {
+    for (const [rcpt, senders] of Object.entries(whitelist)) {
+      if (Array.isArray(senders)) {
+        this.cfg.whitelist[rcpt.toLowerCase()] = senders.map((s) => s.toLowerCase())
+      }
+    }
+  }
+}
+
+/*
+ * Checks message for null sender (bounces have a null sender)
+ *
+ * Special cases:
+ * - Microsoft Exchange will send mail to distribution groups using a
+ *   null sender if the "report_to_originator_enabled" property is false.
+ * - Some email providers (e.g., gmx.net) send DMARC reports with a null sender
+ * - Some auto-responders send replies with a null sender
+ *
+ * Note: This only applies to inbound messages with a null sender.
+ */
+exports.check_null_sender = function (next, connection) {
+  if (!connection.relaying) {
+    const is_null_sender = connection.transaction.mail_from.isNull() ? 'yes' : 'no'
+    connection.transaction.results.add(this, {
+      isa: is_null_sender,
+      emit: true,
+    })
+  }
+  next()
 }
 
 /*
@@ -245,7 +271,7 @@ exports.bad_rcpt = function (next, connection, rcpt) {
 
   const { transaction } = connection
 
-  if (this.cfg.invalid_addrs.includes(rcpt.address().toLowerCase())) {
+  if (this.cfg.invalid_addrs?.includes(rcpt.address().toLowerCase())) {
     transaction.results.add(this, {
       fail: 'bad_rcpt',
       msg: 'rcpt does not accept bounces',
@@ -257,24 +283,6 @@ exports.bad_rcpt = function (next, connection, rcpt) {
   transaction.results.add(this, { pass: 'bad_rcpt' })
 
   next()
-}
-
-/*
- * Checks message for null sender (bounces have a null sender)
- *
- * Special cases:
- * - Microsoft Exchange will send mail to distribution groups using a
- *   null sender if the "report_to_originator_enabled" property is false.
- * - Some email providers (e.g., gmx.net) send DMARC reports with a null sender
- * - Some auto-responders send replies with a null sender
- *
- * Note: This only applies to inbound messages with a null sender.
- */
-exports.has_null_sender = function (transaction) {
-  // Bounces have a null sender.
-  const is_null_sender = !!transaction.mail_from.isNull()
-  transaction.results.add(this, { isa: is_null_sender })
-  return is_null_sender
 }
 
 /*
@@ -326,8 +334,8 @@ exports.bounce_spf = async function (next, connection) {
 
   const { transaction } = connection
 
-  // Recurse through all textual parts and store all parsed IPs
-  // in a Set to remove any duplicates which might appear.
+  // Recurse through all textual parts of the body and store all parsed
+  // IPs in a Set to remove any duplicates which might appear.
   const ips = this.find_received_headers(transaction.body)
   if (ips.size === 0) {
     connection.loginfo(this, 'No received headers found in message')
@@ -343,18 +351,7 @@ exports.bounce_spf = async function (next, connection) {
   const spf = new SPF()
 
   for (const ip of ips) {
-    let result
-    try {
-      result = await spf.check_host(ip, transaction.rcpt_to[0].host, transaction.rcpt_to[0].address())
-    } catch (err) {
-      connection.logerror(this, err.message)
-      transaction.results.add(this, {
-        skip: 'bounce_spf',
-        msg: err.message,
-      })
-      return next()
-    }
-
+    const result = await spf.check_host(ip, transaction.rcpt_to[0].host, transaction.rcpt_to[0].address())
     const spf_result = spf.result(result)
     connection.logdebug(this, { ip, result, spf_result })
 
@@ -424,7 +421,7 @@ exports.create_validation_hash = function (next, connection) {
 
   const { transaction } = connection
 
-  if (!connection.relaying || this.has_null_sender(transaction)) {
+  if (!connection.relaying || transaction.results.has(this, 'isa', 'yes')) {
     return next()
   }
 
@@ -470,7 +467,6 @@ exports.create_validation_hash = function (next, connection) {
  * Configuration options:
  * - check.hash_validation (boolean): Enable hash-based validation
  * - reject.hash_validation (boolean): Reject bounces that fail hash validation
- * - reject.hash_date (boolean): Reject bounces with expired or invalid dates
  * - skip.remaining_plugins (boolean): Skip remaining plugins if validation passes
  * - validation.max_hash_age_days (number): Maximum age in days for bounce messages
  *
@@ -494,7 +490,8 @@ exports.validate_bounce = function (next, connection) {
 
   const { transaction } = connection
 
-  const { from, date, message_id, hash } = this.find_bounce_headers(transaction, transaction.body)
+  // check message body for headers from the original email
+  const { from, date, message_id, hash } = this.find_bounce_headers(transaction.body)
 
   if (hash) {
     const amalgam = `${from}:${date}:${message_id}`
@@ -524,10 +521,8 @@ exports.validate_bounce = function (next, connection) {
             msg: result.msg,
             emit: true,
           })
-          if (this.cfg.reject.hash_date) {
-            return next(DENY, 'invalid bounce')
-          }
-          return next()
+
+          return next(DENY, 'invalid bounce')
         }
       }
 
@@ -535,17 +530,16 @@ exports.validate_bounce = function (next, connection) {
     } else {
       msg = 'missing headers'
     }
-    if (msg) {
-      transaction.results.add(this, {
-        fail: 'validate_bounce',
-        msg: msg,
-        emit: true,
-      })
-      if (this.cfg.reject.hash_validation) {
-        return next(DENY, 'invalid bounce')
-      }
-      return next()
+
+    transaction.results.add(this, {
+      fail: 'validate_bounce',
+      msg: msg,
+      emit: true,
+    })
+    if (this.cfg.reject.hash_validation) {
+      return next(DENY, 'invalid bounce')
     }
+    return next()
   } else if (from && date && message_id) {
     const from_header = transaction.header.get_decoded('From').toLowerCase()
     let parsed_from
@@ -633,10 +627,10 @@ exports.find_bounce_headers = function (body) {
 
   // Check the current body part
   if (body?.bodytext?.length) {
-    headers.from = extract_header(body.bodytext, 'From')
-    headers.date = extract_header(body.bodytext, 'Date')
-    headers.message_id = extract_header(body.bodytext, 'Message-ID')
-    headers.hash = extract_header(body.bodytext, 'X-Haraka-Bounce-Validation')
+    headers.from = this.extract_header(body.bodytext, 'From')
+    headers.date = this.extract_header(body.bodytext, 'Date')
+    headers.message_id = this.extract_header(body.bodytext, 'Message-ID')
+    headers.hash = this.extract_header(body.bodytext, 'X-Haraka-Bounce-Validation')
 
     // were any headers found?
     if (headers.from || headers.date || headers.message_id || headers.hash) {
@@ -649,7 +643,7 @@ exports.find_bounce_headers = function (body) {
     for (const child of body.children) {
       const child_hdrs = this.find_bounce_headers(child)
 
-      // were any headers found?
+      // Only return if any useful headers were found
       if (child_hdrs.from || child_hdrs.date || child_hdrs.message_id || child_hdrs.hash) {
         return child_hdrs
       }
@@ -662,34 +656,28 @@ exports.find_bounce_headers = function (body) {
 // Determines whether validation checks should be skipped
 // Skips checks for outbound emails or messages that aren't bounces
 exports.should_skip = function (connection) {
-  const not_a_bounce = !this.has_null_sender(connection.transaction)
+  const not_a_bounce = connection.transaction.results.has(this, 'isa', 'no')
 
   return connection.relaying || not_a_bounce
 }
 
 // Extracts a header value from email body text
-function extract_header(bodytext, header_name) {
+exports.extract_header = function (bodytext, header_name) {
   if (!bodytext || typeof bodytext !== 'string') return
 
-  // Use a regular expression with named capture group for the header value
-  const header_re = new RegExp(
-    `^${header_name}:(?<value>[^\r\n]*(?:[\r\n]+[ \t][^\r\n]*)*?)[\r\n]+(?:[a-z\\-]+:|$)`,
-    'imu',
-  )
+  // Match header and any folded continuation lines
+  const regex = new RegExp(`^${header_name}:\\s*(?<value>.+(?:\\r?\\n[ \\t].+)*)`, 'imu')
 
-  const match = header_re.exec(bodytext)
-  if (!match?.groups?.value) return
+  const match = bodytext.match(regex)
 
-  let { value } = match.groups
+  if (!match?.groups) return undefined
 
-  // Split by newlines, remove leading whitespace on folded lines, and join with spaces
-  value = value
-    .split(/[\r\n]+/u)
-    .map((line, i) => (i === 0 ? line : line.replace(/^[ \t]+/u, '')))
-    .join(' ')
-    .trim()
+  // Unfold the header by replacing CRLF/LF followed by whitespace with a single space
+  //  const folded_value = match[1];
+  const folded_value = match.groups.value
+  const unfolded_value = folded_value.replace(/\r?\n[ \t]+/gu, ' ')
 
-  return value
+  return unfolded_value.trim()
 }
 
 exports.is_whitelisted = function (rcpt, from) {
