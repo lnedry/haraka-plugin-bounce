@@ -20,7 +20,6 @@ beforeEach(function () {
   this.connection.remote.ip = '8.8.8.8'
   this.connection.relaying = false
   this.connection.init_transaction()
-  this.connection.transaction.results = new fixtures.result_store(this.connection)
   this.connection.transaction.mail_from = new Address.Address('<>')
   this.connection.transaction.rcpt_to.push(new Address.Address('test@example.com'))
 
