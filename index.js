@@ -54,34 +54,34 @@ exports.load_bounce_ini = function () {
 }
 
 exports.validate_config = function () {
-  const { check, reject } = this.cfg
+  const { check, reject, validation } = this.cfg
 
   // checks need to be enabled for rejects to work
   for (const key of ['single_recipient', 'empty_return_path', 'bounce_spf', 'hash_validation']) {
     if (reject[key] && !check[key]) check[key] = true
   }
 
-  if (!this.cfg.check.hash_validation) return
-  if (!this.cfg.validation.max_hash_age_days) this.cfg.validation.max_hash_age_days = MAX_HASH_AGE_DAYS
-  if (!this.cfg.validation.hash_algorithm) this.cfg.validation.hash_algorithm = 'sha256'
+  if (!check.hash_validation) return
+  if (!validation.max_hash_age_days) validation.max_hash_age_days = MAX_HASH_AGE_DAYS
+  if (!validation.hash_algorithm) validation.hash_algorithm = 'sha256'
 
   // confirm that hash algorithm is supported
   const algorithms = crypto.getHashes()
-  if (!algorithms.includes(this.cfg.validation.hash_algorithm)) {
-    this.logerror(`Bounce validation disabled due to invalid hash algorithm: ${this.cfg.validation.hash_algorithm}`)
-    this.cfg.check.hash_validation = false
+  if (!algorithms.includes(validation.hash_algorithm)) {
+    this.logerror(`Bounce validation disabled due to invalid hash algorithm: ${validation.hash_algorithm}`)
+    check.hash_validation = false
     return
   }
 
-  if (!this.cfg.validation.secret || this.cfg.validation.secret === 'your_generated_secret_here') {
+  if (!validation.secret || validation.secret === 'your_generated_secret_here') {
     this.logerror(`Bounce validation disabled due to missing secret.`)
-    this.cfg.check.hash_validation = false
+    check.hash_validation = false
     return
   }
 
-  if (this.cfg.validation.secret.length < 32) {
+  if (validation.secret.length < 32) {
     this.logerror('Bounce validation disabled due to secret that is too short.')
-    this.cfg.check.hash_validation = false
+    check.hash_validation = false
     return
   }
 }
