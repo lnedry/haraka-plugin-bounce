@@ -25,31 +25,6 @@ beforeEach(function () {
 
   this.plugin.register()
 
-  this.plugin.cfg = {
-    validation: {
-      max_hash_age_days: 6,
-      hash_algorithm: 'sha256',
-      secret: crypto.randomBytes(32).toString('base64'),
-    },
-    check: {
-      single_recipient: true,
-      empty_return_path: false,
-      bounce_spf: true,
-      hash_validation: false,
-    },
-    reject: {
-      single_recipient: true,
-      empty_return_path: false,
-      bounce_spf: false,
-      bad_rcpt: true,
-      all_bounces: false,
-      hash_validation: false,
-    },
-    skip: {
-      remaining_plugins: false,
-    },
-  }
-
   this.should_skip_spy = sinon.spy(this.plugin, 'should_skip')
 })
 
@@ -62,7 +37,7 @@ describe('register', function () {
     const load_bounce_whitelist_spy = sinon.spy(this.plugin, 'load_bounce_whitelist')
     const validate_config_spy = sinon.spy(this.plugin, 'validate_config')
 
-    assert.equal('function', typeof this.plugin.register)
+    assert.strictEqual('function', typeof this.plugin.register)
 
     this.plugin.register()
 
@@ -75,16 +50,16 @@ describe('register', function () {
   it('registers hooks', function () {
     assert.ok(this.plugin.register_hook.called)
     let hook_count = 0
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'check_null_sender')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'reject_all')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'bad_rcpt')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'single_recipient')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'bounce_spf_enable')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'empty_return_path')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'create_validation_hash')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'validate_bounce')
-    assert.equal(this.plugin.register_hook.args[hook_count++][1], 'bounce_spf')
-    assert.equal(this.plugin.register_hook.args.length, hook_count)
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'check_null_sender')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'reject_all')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'bad_rcpt')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'single_recipient')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'bounce_spf_enable')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'empty_return_path')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'create_validation_hash')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'validate_bounce')
+    assert.strictEqual(this.plugin.register_hook.args[hook_count++][1], 'bounce_spf')
+    assert.strictEqual(this.plugin.register_hook.args.length, hook_count)
   })
 })
 
@@ -94,8 +69,8 @@ describe('load_configs', function () {
 
     assert.ok(this.plugin.cfg.check)
     assert.ok(this.plugin.cfg.reject)
-    assert.ok(this.plugin.cfg.validation.max_hash_age_days, 6)
-    assert.ok(this.plugin.cfg.validation.hash_algorithm, 'sha256')
+    assert.strictEqual(this.plugin.cfg.validation.max_hash_age_days, 6)
+    assert.strictEqual(this.plugin.cfg.validation.hash_algorithm, 'sha256')
     assert.ok(this.plugin.cfg.skip)
   })
 
@@ -125,7 +100,7 @@ describe('load_configs', function () {
     // Verify all keys and values are lowercased
     assert.deepEqual(this.plugin.cfg.whitelist['test@example.com'], ['no-reply@example.com', 'support@example.com'])
     assert.deepEqual(this.plugin.cfg.whitelist['foo@example.com'], ['*@example.net', 'sales@example.com'])
-    assert.equal(Object.keys(this.plugin.cfg.whitelist).length, 2)
+    assert.strictEqual(Object.keys(this.plugin.cfg.whitelist).length, 2)
   })
 })
 
@@ -133,6 +108,25 @@ describe('validate_config', function () {
   let getHashes_stub, logerror_spy
 
   beforeEach(function () {
+    this.plugin.cfg = {
+      check: {
+        single_recipient: true,
+        empty_return_path: false,
+        bounce_spf: true,
+        hash_validation: true,
+      },
+      reject: {
+        single_recipient: true,
+        empty_return_path: false,
+        bounce_spf: false,
+        hash_validation: false,
+      },
+      validation: {
+        max_hash_age_days: 6,
+        hash_algorithm: 'sha256',
+      },
+    }
+
     logerror_spy = sinon.spy(this.plugin, 'logerror')
     getHashes_stub = sinon.stub(crypto, 'getHashes')
     getHashes_stub.returns(['sha256', 'sha512', 'md5'])
@@ -143,16 +137,14 @@ describe('validate_config', function () {
 
     this.plugin.validate_config()
 
-    assert.ok(getHashes_stub.notCalled)
-    assert.ok(this.plugin.cfg.validation.max_hash_age_days)
+    assert.ok(getHashes_stub.calledOnce)
+    assert.strictEqual(this.plugin.cfg.validation.max_hash_age_days, 6)
   })
 
   it('will enable single recipient check', function () {
-    this.plugin.cfg.check.single_recipient = false
-
     this.plugin.validate_config()
 
-    assert.ok(getHashes_stub.notCalled)
+    assert.ok(getHashes_stub.calledOnce)
     assert.ok(this.plugin.cfg.check.single_recipient)
   })
 
@@ -161,23 +153,22 @@ describe('validate_config', function () {
 
     this.plugin.validate_config()
 
-    assert.ok(getHashes_stub.notCalled)
+    assert.ok(getHashes_stub.calledOnce)
     assert.ok(this.plugin.cfg.check.empty_return_path)
   })
 
   it('will enable bounce SPF check', function () {
-    this.plugin.cfg.check.bounce_spf = false
     this.plugin.cfg.reject.bounce_spf = true
 
     this.plugin.validate_config()
 
-    assert.ok(getHashes_stub.notCalled)
+    assert.ok(getHashes_stub.calledOnce)
     assert.ok(this.plugin.cfg.check.bounce_spf)
   })
 
   it('will enable bounce hash validation', function () {
-    this.plugin.cfg.check.hash_validation = false
     this.plugin.cfg.reject.hash_validation = true
+    this.plugin.cfg.validation.secret = crypto.randomBytes(32).toString('base64')
 
     this.plugin.validate_config()
 
@@ -186,65 +177,58 @@ describe('validate_config', function () {
   })
 
   it('will not check hash validation', function () {
+    this.plugin.cfg.check.hash_validation = false
+
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.notCalled)
-    assert.equal(this.plugin.cfg.check.hash_validation, false)
+    assert.strictEqual(this.plugin.cfg.check.hash_validation, false)
   })
 
   it('has invalid hash algorithm', function () {
-    this.plugin.cfg.check.hash_validation = true
     this.plugin.cfg.validation.hash_algorithm = 'invalid_algorithm'
 
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
-    assert.equal(this.plugin.cfg.check.hash_validation, false)
+    assert.strictEqual(this.plugin.cfg.check.hash_validation, false)
   })
 
   it('is missing hash algorithm', function () {
-    delete this.plugin.cfg.validation.hash_algorithm
-
-    this.plugin.validate_config()
-
-    assert.ok(getHashes_stub.notCalled)
-    assert.equal(this.plugin.cfg.validation.hash_algorithm, 'sha256')
-  })
-
-  it('is missing the secret key', function () {
-    delete this.plugin.cfg.validation.secret
-    this.plugin.cfg.check.hash_validation = true
-
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
-    assert.equal(this.plugin.cfg.check.hash_validation, false)
+    assert.strictEqual(this.plugin.cfg.validation.hash_algorithm, 'sha256')
+  })
+
+  it('is missing the secret key', function () {
+    this.plugin.validate_config()
+
+    assert.ok(getHashes_stub.calledOnce)
+    assert.strictEqual(this.plugin.cfg.check.hash_validation, false)
   })
 
   it('has short secret key', function () {
     this.plugin.cfg.validation.secret = 'short_key'
-    this.plugin.cfg.check.hash_validation = true
 
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
     assert.ok(logerror_spy.calledOnce)
-    assert.equal(this.plugin.cfg.check.hash_validation, false)
+    assert.strictEqual(this.plugin.cfg.check.hash_validation, false)
   })
 
-  it('has default config settings', function () {
-    this.plugin.cfg.check.hash_validation = true
+  it('has default secret', function () {
     this.plugin.cfg.validation.secret = 'your_generated_secret_here'
 
     this.plugin.validate_config()
 
     assert.ok(getHashes_stub.calledOnce)
     assert.ok(logerror_spy.calledOnce)
-    assert.equal(this.plugin.cfg.check.hash_validation, false)
+    assert.strictEqual(this.plugin.cfg.check.hash_validation, false)
   })
 
-  it('has valid config settings', function () {
-    this.plugin.cfg.check.hash_validation = true
+  it('has valid secret', function () {
     this.plugin.cfg.validation.secret = 'valid_secret_thats_at_least_32_characters_long'
 
     this.plugin.validate_config()
@@ -264,8 +248,8 @@ describe('reject_all', function () {
     await new Promise((resolve) => {
       this.plugin.reject_all((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -276,8 +260,8 @@ describe('reject_all', function () {
 
     await new Promise((resolve) => {
       this.plugin.reject_all((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -289,8 +273,8 @@ describe('reject_all', function () {
     await new Promise((resolve) => {
       this.plugin.reject_all((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -302,8 +286,8 @@ describe('reject_all', function () {
     await new Promise((resolve) => {
       this.plugin.reject_all((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -316,8 +300,8 @@ describe('reject_all', function () {
         assert.ok(this.should_skip_spy.returned(false))
         this.connection.transaction.results.has(this.plugin, 'fail', 'bounces_accepted')
         this.connection.transaction.results.has(this.plugin, 'msg', 'bounces not accepted here')
-        assert.equal(code, DENY)
-        assert.equal(msg, 'Bounces not accepted here')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'Bounces not accepted here')
         resolve()
       }, this.connection)
     })
@@ -336,8 +320,8 @@ describe('empty_return_path', function () {
     await new Promise((resolve) => {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -349,8 +333,8 @@ describe('empty_return_path', function () {
     await new Promise((resolve) => {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -362,8 +346,8 @@ describe('empty_return_path', function () {
     await new Promise((resolve) => {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -374,8 +358,8 @@ describe('empty_return_path', function () {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.returned(false))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'empty_return_path'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -387,8 +371,8 @@ describe('empty_return_path', function () {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.returned(false))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'empty_return_path'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -400,8 +384,8 @@ describe('empty_return_path', function () {
       this.plugin.empty_return_path((code, msg) => {
         assert.ok(this.should_skip_spy.returned(false))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'empty_return_path'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -417,8 +401,8 @@ describe('empty_return_path', function () {
         assert.ok(this.should_skip_spy.returned(false))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'empty_return_path'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'bounce with non-empty Return-Path'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -432,8 +416,8 @@ describe('empty_return_path', function () {
         assert.ok(this.should_skip_spy.returned(false))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'empty_return_path'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'bounce with non-empty Return-Path'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'bounce with non-empty Return-Path (RFC 3834)')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'bounce with non-empty Return-Path (RFC 3834)')
         resolve()
       }, this.connection)
     })
@@ -446,8 +430,8 @@ describe('single_recipient', function () {
 
     await new Promise((resolve) => {
       this.plugin.single_recipient((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -458,8 +442,8 @@ describe('single_recipient', function () {
     await new Promise((resolve) => {
       this.plugin.single_recipient((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -471,8 +455,8 @@ describe('single_recipient', function () {
     await new Promise((resolve) => {
       this.plugin.single_recipient((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -483,8 +467,8 @@ describe('single_recipient', function () {
       this.plugin.single_recipient((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'single_recipient'))
         assert.ok(this.should_skip_spy.calledOnce)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -497,8 +481,8 @@ describe('single_recipient', function () {
       this.plugin.single_recipient((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'single_recipient'))
         assert.ok(this.should_skip_spy.calledOnce)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -511,8 +495,8 @@ describe('single_recipient', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'single_recipient'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'too many recipients'))
         assert.ok(this.should_skip_spy.calledOnce)
-        assert.equal(code, DENY)
-        assert.equal(msg, 'this bounce message has too many recipients')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'this bounce message has too many recipients')
         resolve()
       }, this.connection)
     })
@@ -532,8 +516,8 @@ describe('bad_rcpt', function () {
       this.plugin.bad_rcpt(
         (code, msg) => {
           assert.ok(this.should_skip_spy.notCalled)
-          assert.equal(code, undefined)
-          assert.equal(msg, undefined)
+          assert.strictEqual(code, undefined)
+          assert.strictEqual(msg, undefined)
           resolve()
         },
         this.connection,
@@ -548,8 +532,8 @@ describe('bad_rcpt', function () {
     await new Promise((resolve) => {
       this.plugin.bad_rcpt((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -561,8 +545,8 @@ describe('bad_rcpt', function () {
     await new Promise((resolve) => {
       this.plugin.bad_rcpt((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -575,8 +559,8 @@ describe('bad_rcpt', function () {
       (code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'bad_rcpt'))
         assert.ok(this.should_skip_spy.calledOnce)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
       },
       this.connection,
       rcpt,
@@ -591,8 +575,8 @@ describe('bad_rcpt', function () {
           assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bad_rcpt'))
           assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'rcpt does not accept bounces'))
           assert.ok(this.should_skip_spy.calledOnce)
-          assert.equal(code, DENY)
-          assert.equal(msg, `${rcpt.address()} does not accept bounces`)
+          assert.strictEqual(code, DENY)
+          assert.strictEqual(msg, `${rcpt.address()} does not accept bounces`)
           resolve()
         },
         this.connection,
@@ -609,8 +593,8 @@ describe('bounce_spf_enable', function () {
     await new Promise((resolve) => {
       this.plugin.bounce_spf_enable((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -621,9 +605,9 @@ describe('bounce_spf_enable', function () {
 
     await new Promise((resolve) => {
       this.plugin.bounce_spf_enable((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
-        assert.equal(this.connection.transaction.parse_body, false)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
+        assert.strictEqual(this.connection.transaction.parse_body, false)
         resolve()
       }, this.connection)
     })
@@ -636,9 +620,9 @@ describe('bounce_spf_enable', function () {
     await new Promise((resolve) => {
       this.plugin.bounce_spf_enable((code, msg) => {
         assert.ok(this.should_skip_spy.calledOnce)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
-        assert.equal(this.connection.transaction.parse_body, true)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
+        assert.strictEqual(this.connection.transaction.parse_body, true)
         resolve()
       }, this.connection)
     })
@@ -673,8 +657,8 @@ describe('bounce_spf', function () {
 
     await new Promise((resolve) => {
       this.plugin.bounce_spf((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -686,8 +670,8 @@ describe('bounce_spf', function () {
     await new Promise((resolve) => {
       this.plugin.bounce_spf((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -700,8 +684,8 @@ describe('bounce_spf', function () {
       this.plugin.bounce_spf((code, msg) => {
         assert.ok(this.should_skip_spy.calledOnce)
         assert.ok(find_received_headers_stub.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -716,8 +700,8 @@ describe('bounce_spf', function () {
         assert.ok(this.should_skip_spy.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'no'))
         assert.ok(find_received_headers_stub.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -732,8 +716,8 @@ describe('bounce_spf', function () {
       this.plugin.bounce_spf((code, msg) => {
         assert.ok(this.should_skip_spy.calledOnce)
         assert.ok(find_received_headers_stub.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -751,8 +735,8 @@ describe('bounce_spf', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'no IP addresses found in message'))
         assert.ok(spf_check_host_stub.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -772,8 +756,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledTwice)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'bounce_spf'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -788,8 +772,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'SPF returned TempError'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -804,8 +788,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'SPF returned PermError'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -820,8 +804,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'SPF returned None'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -835,8 +819,8 @@ describe('bounce_spf', function () {
       this.plugin.bounce_spf((code, msg) => {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'bounce_spf'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -851,8 +835,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid bounce (spoofed sender)'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'Invalid bounce (spoofed sender)')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'Invalid bounce (spoofed sender)')
         resolve()
       }, this.connection)
     })
@@ -867,8 +851,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid bounce (spoofed sender)'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'Invalid bounce (spoofed sender)')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'Invalid bounce (spoofed sender)')
         resolve()
       }, this.connection)
     })
@@ -885,8 +869,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid bounce (spoofed sender)'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -901,8 +885,8 @@ describe('bounce_spf', function () {
         assert.ok(spf_check_host_stub.calledOnce)
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_spf'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid bounce (spoofed sender)'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'Invalid bounce (spoofed sender)')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'Invalid bounce (spoofed sender)')
         resolve()
       }, this.connection)
     })
@@ -930,8 +914,8 @@ describe('create_validation_hash', function () {
 
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -943,8 +927,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.notCalled(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -956,8 +940,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.notCalled(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -971,8 +955,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.notCalled(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -988,8 +972,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.calledThrice(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -999,8 +983,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.calledThrice(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1011,6 +995,8 @@ describe('create_validation_hash', function () {
     const from_header = '<test@example.com>'
     const message_id = '<test@example.COM>'
 
+    this.plugin.cfg.validation.secret = crypto.randomBytes(32).toString('base64')
+
     this.connection.transaction.add_header('From', from_header)
     this.connection.transaction.add_header('Date', date_header)
     this.connection.transaction.add_header('Message-ID', message_id)
@@ -1018,8 +1004,8 @@ describe('create_validation_hash', function () {
     await new Promise((resolve) => {
       this.plugin.create_validation_hash((code, msg) => {
         sinon.assert.calledThrice(get_decoded_spy)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1034,6 +1020,7 @@ describe('validate_bounce', function () {
   beforeEach(function () {
     this.plugin.cfg.check.hash_validation = true
     this.plugin.cfg.reject.hash_validation = true
+    this.plugin.cfg.validation.secret = crypto.randomBytes(32).toString('base64')
 
     this.plugin.cfg.whitelist = {}
 
@@ -1060,8 +1047,8 @@ describe('validate_bounce', function () {
 
     await new Promise((resolve) => {
       this.plugin.validate_bounce((code, msg) => {
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1073,8 +1060,8 @@ describe('validate_bounce', function () {
     await new Promise((resolve) => {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.should_skip_spy.notCalled)
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1086,8 +1073,8 @@ describe('validate_bounce', function () {
     await new Promise((resolve) => {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.should_skip_spy.returned(true))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1107,8 +1094,8 @@ describe('validate_bounce', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash length mismatch'))
         assert(find_bounce_headers_stub.calledOnce)
         assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1126,8 +1113,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash length mismatch'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1143,8 +1130,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash length mismatch'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1159,8 +1146,8 @@ describe('validate_bounce', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'validate_bounce'))
         assert(find_bounce_headers_stub.calledOnce)
         assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1176,8 +1163,8 @@ describe('validate_bounce', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'pass', 'validate_bounce'))
         assert(find_bounce_headers_stub.calledOnce)
         assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
-        assert.equal(code, OK)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, OK)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1198,8 +1185,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash does not match'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1218,8 +1205,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash does not match'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1236,8 +1223,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1254,8 +1241,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1272,8 +1259,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1288,8 +1275,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1304,8 +1291,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1320,8 +1307,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing headers'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1343,8 +1330,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid from header'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1367,8 +1354,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'whitelisted'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1391,8 +1378,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'whitelisted'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1410,8 +1397,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid from header'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
 
         resolve()
       }, this.connection)
@@ -1431,8 +1418,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing validation hash'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1450,8 +1437,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing validation hash'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1465,8 +1452,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'skip', 'validate_bounce'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'missing all headers'))
-        assert.equal(code, undefined)
-        assert.equal(msg, undefined)
+        assert.strictEqual(code, undefined)
+        assert.strictEqual(msg, undefined)
         resolve()
       }, this.connection)
     })
@@ -1485,8 +1472,8 @@ describe('validate_bounce', function () {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'hash is too old'))
         assert(find_bounce_headers_stub.calledOnce)
         assert(find_bounce_headers_stub.calledWith(this.connection.transaction.body))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1502,8 +1489,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_date'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid date header'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1519,8 +1506,8 @@ describe('validate_bounce', function () {
       this.plugin.validate_bounce((code, msg) => {
         assert.ok(this.connection.transaction.results.has(this.plugin, 'fail', 'bounce_date'))
         assert.ok(this.connection.transaction.results.has(this.plugin, 'msg', 'invalid date header'))
-        assert.equal(code, DENY)
-        assert.equal(msg, 'invalid bounce')
+        assert.strictEqual(code, DENY)
+        assert.strictEqual(msg, 'invalid bounce')
         resolve()
       }, this.connection)
     })
@@ -1540,15 +1527,15 @@ describe('is_date_valid', function () {
     const SevenDaysAgo = new Date(new Date() - 1000 * 60 * 60 * 24 * 7)
     const date_header = SevenDaysAgo.toUTCString()
     const result = this.plugin.is_date_valid(date_header)
-    assert.equal(result.valid, false)
-    assert.equal(result.msg, 'hash is too old')
+    assert.strictEqual(result.valid, false)
+    assert.strictEqual(result.msg, 'hash is too old')
   })
 
   it('has invalid date', function () {
     const not_a_date = 'hello world'
     const result = this.plugin.is_date_valid(not_a_date)
-    assert.equal(result.valid, false)
-    assert.equal(result.msg, 'invalid date header')
+    assert.strictEqual(result.valid, false)
+    assert.strictEqual(result.msg, 'invalid date header')
   })
 })
 
@@ -1558,7 +1545,7 @@ describe('is_whitelisted', function () {
 
     const whitelisted = this.plugin.is_whitelisted('test@example.com', 'support@example.com')
 
-    assert.equal(whitelisted, false)
+    assert.strictEqual(whitelisted, false)
   })
 
   it('is whitelisted with an exact match', function () {
@@ -1606,16 +1593,16 @@ Message-ID: ${message_id}
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(JSON.stringify(headers), '{}')
+    assert.strictEqual(JSON.stringify(headers), '{}')
   })
 
   it('has all headers in body', function () {
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from)
-    assert.equal(headers.date, date)
-    assert.equal(headers.message_id, message_id)
-    assert.equal(headers.hash, hash)
+    assert.strictEqual(headers.from, from)
+    assert.strictEqual(headers.date, date)
+    assert.strictEqual(headers.message_id, message_id)
+    assert.strictEqual(headers.hash, hash)
   })
 
   it('has From header in body', function () {
@@ -1624,10 +1611,10 @@ Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from)
-    assert.equal(headers.date, undefined)
-    assert.equal(headers.message_id, undefined)
-    assert.equal(headers.hash, undefined)
+    assert.strictEqual(headers.from, from)
+    assert.strictEqual(headers.date, undefined)
+    assert.strictEqual(headers.message_id, undefined)
+    assert.strictEqual(headers.hash, undefined)
   })
 
   it('has Date header in body', function () {
@@ -1635,10 +1622,10 @@ Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, undefined)
-    assert.equal(headers.date, date)
-    assert.equal(headers.message_id, undefined)
-    assert.equal(headers.hash, undefined)
+    assert.strictEqual(headers.from, undefined)
+    assert.strictEqual(headers.date, date)
+    assert.strictEqual(headers.message_id, undefined)
+    assert.strictEqual(headers.hash, undefined)
   })
 
   it('has no headers in body', function () {
@@ -1646,10 +1633,10 @@ Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, undefined)
-    assert.equal(headers.date, undefined)
-    assert.equal(headers.message_id, undefined)
-    assert.equal(headers.hash, undefined)
+    assert.strictEqual(headers.from, undefined)
+    assert.strictEqual(headers.date, undefined)
+    assert.strictEqual(headers.message_id, undefined)
+    assert.strictEqual(headers.hash, undefined)
   })
 
   it('has headers in body.children', function () {
@@ -1660,10 +1647,10 @@ Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, from)
-    assert.equal(headers.date, date)
-    assert.equal(headers.message_id, message_id)
-    assert.equal(headers.hash, hash)
+    assert.strictEqual(headers.from, from)
+    assert.strictEqual(headers.date, date)
+    assert.strictEqual(headers.message_id, message_id)
+    assert.strictEqual(headers.hash, hash)
   })
 
   it('has no headers in body.children', function () {
@@ -1674,10 +1661,10 @@ Content-Type: text/plain`
 
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, undefined)
-    assert.equal(headers.date, undefined)
-    assert.equal(headers.message_id, undefined)
-    assert.equal(headers.hash, undefined)
+    assert.strictEqual(headers.from, undefined)
+    assert.strictEqual(headers.date, undefined)
+    assert.strictEqual(headers.message_id, undefined)
+    assert.strictEqual(headers.hash, undefined)
   })
 
   it('has folded headers', function () {
@@ -1691,10 +1678,10 @@ X-Haraka-Bounce-Validation: ${hash}
 `
     const headers = this.plugin.find_bounce_headers(transaction.body)
 
-    assert.equal(headers.from, unfolded_from)
-    assert.equal(headers.date, date)
-    assert.equal(headers.message_id, message_id)
-    assert.equal(headers.hash, hash)
+    assert.strictEqual(headers.from, unfolded_from)
+    assert.strictEqual(headers.date, date)
+    assert.strictEqual(headers.message_id, message_id)
+    assert.strictEqual(headers.hash, hash)
   })
 })
 
@@ -1706,7 +1693,7 @@ describe('should_skip', function () {
 
     const result = this.plugin.should_skip(this.connection)
 
-    assert.equal(result, true)
+    assert.strictEqual(result, true)
   })
 
   it('is relaying and is a bounce', function () {
@@ -1715,7 +1702,7 @@ describe('should_skip', function () {
 
     const result = this.plugin.should_skip(this.connection)
 
-    assert.equal(result, true)
+    assert.strictEqual(result, true)
   })
 
   it('is not relaying and is not a bounce', function () {
@@ -1725,7 +1712,7 @@ describe('should_skip', function () {
 
     const result = this.plugin.should_skip(this.connection)
 
-    assert.equal(result, true)
+    assert.strictEqual(result, true)
   })
 
   it('is not relaying and is a bounce', function () {
@@ -1734,7 +1721,7 @@ describe('should_skip', function () {
 
     const result = this.plugin.should_skip(this.connection)
 
-    assert.equal(result, false)
+    assert.strictEqual(result, false)
   })
 })
 
@@ -1746,13 +1733,13 @@ describe('find_received_headers', function () {
   it('has no body', function () {
     const ips = this.plugin.find_received_headers('')
 
-    assert.equal(ips.size, 0)
+    assert.strictEqual(ips.size, 0)
   })
 
   it('has no Received headers', function () {
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 0)
+    assert.strictEqual(ips.size, 0)
   })
 
   it('has one Received header', function () {
@@ -1762,7 +1749,7 @@ describe('find_received_headers', function () {
 
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 1)
+    assert.strictEqual(ips.size, 1)
     assert.ok(ips.has(ip))
   })
 
@@ -1777,7 +1764,7 @@ Received: from mail.example.com (HELO mail.example.com) (${ip2})
 
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 1)
+    assert.strictEqual(ips.size, 1)
     assert.ok(ips.has(ip2))
   })
 
@@ -1792,7 +1779,7 @@ Received: from mail.example.com (mail.example.com [${ip2}])
 
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 2)
+    assert.strictEqual(ips.size, 2)
     assert.ok(ips.has(ip1))
     assert.ok(ips.has(ip2))
   })
@@ -1810,7 +1797,7 @@ Received: from prod.example.com
 
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 2)
+    assert.strictEqual(ips.size, 2)
     assert.ok(ips.has(ip1))
     assert.ok(ips.has(ip2))
   })
@@ -1828,7 +1815,7 @@ Received: from mail.example.com (mail.example.com [${ip2}])
     }
     const ips = this.plugin.find_received_headers(this.connection.transaction.body)
 
-    assert.equal(ips.size, 2)
+    assert.strictEqual(ips.size, 2)
     assert.ok(ips.has(ip1))
     assert.ok(ips.has(ip2))
   })
@@ -1912,17 +1899,17 @@ describe('check_null_sender', function () {
   it('is relaying', function () {
     this.connection.relaying = true
     this.plugin.check_null_sender((code, msg) => {
-      assert.strictEqual(this.connection.transaction.results.get(this.plugin), undefined)
-      assert.equal(code, undefined)
-      assert.equal(msg, undefined)
+      assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
+      assert.strictEqual(code, undefined)
+      assert.strictEqual(msg, undefined)
     }, this.connection)
   })
 
   it('has null sender', function () {
     this.plugin.check_null_sender((code, msg) => {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
-      assert.equal(code, undefined)
-      assert.equal(msg, undefined)
+      assert.strictEqual(code, undefined)
+      assert.strictEqual(msg, undefined)
     }, this.connection)
   })
 
@@ -1931,8 +1918,8 @@ describe('check_null_sender', function () {
 
     this.plugin.check_null_sender((code, msg) => {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'yes'))
-      assert.equal(code, undefined)
-      assert.equal(msg, undefined)
+      assert.strictEqual(code, undefined)
+      assert.strictEqual(msg, undefined)
     }, this.connection)
   })
 
@@ -1941,13 +1928,15 @@ describe('check_null_sender', function () {
 
     this.plugin.check_null_sender((code, msg) => {
       assert.ok(this.connection.transaction.results.has(this.plugin, 'isa', 'no'))
-      assert.equal(code, undefined)
-      assert.equal(msg, undefined)
+      assert.strictEqual(code, undefined)
+      assert.strictEqual(msg, undefined)
     }, this.connection)
   })
 })
 
 function create_headers(plugin, options = {}) {
+  plugin.cfg.validation.secret = crypto.randomBytes(32).toString('base64')
+
   const date_header = options.date_header || new Date().toISOString()
   const from_header = options.from_header || 'test <test@example.com>'
   const message_id = options.message_id || '<PB8-DCB-KHNZ4Y5J3N0Z@example.com>'
